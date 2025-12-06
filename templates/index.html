@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bug Predictor AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-bug"></i>
+                <span>BugPredictor<span class="highlight">.AI</span></span>
+            </div>
+            <p class="subtitle">Advanced Software Defect Prediction</p>
+        </header>
+
+        <main>
+            <div class="glass-card">
+                <div class="language-selector">
+                    <label class="radio-label">
+                        <input type="radio" name="language" value="java" checked>
+                        <span class="radio-custom"><i class="fa-brands fa-java"></i> Java</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="language" value="c++">
+                        <span class="radio-custom"><i class="fa-solid fa-c"></i> C/C++</span>
+                    </label>
+                </div>
+
+                <div class="input-method-tabs">
+                    <button class="tab-btn active" data-tab="paste">Paste Code</button>
+                    <button class="tab-btn" data-tab="upload">Upload File</button>
+                </div>
+
+                <div class="tab-content active" id="paste-tab">
+                    <textarea id="code-input" placeholder="Paste your source code here..."></textarea>
+                </div>
+
+                <div class="tab-content" id="upload-tab">
+                    <div class="file-upload-area" id="drop-zone">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <p>Drag & Drop your file here or <span>Browse</span></p>
+                        <input type="file" id="file-input" hidden>
+                        <div class="file-info" id="file-info"></div>
+                    </div>
+                </div>
+
+                <button id="predict-btn" class="glow-btn">
+                    <span>Analyze Code</span>
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </button>
+
+                <div id="loading" class="hidden">
+                    <div class="spinner"></div>
+                    <p>Analyzing code metrics...</p>
+                </div>
+
+                <div id="result-area" class="hidden">
+                    <div class="result-card" id="result-card">
+                        <div class="result-header">
+                            <h3 id="result-title">Prediction Result</h3>
+                            <div class="confidence-badge" id="confidence-badge">98% Confidence</div>
+                        </div>
+                        <div class="result-body">
+                            <div class="verdict" id="verdict">
+                                <i class="fa-solid fa-check-circle"></i>
+                                <span>Clean Code</span>
+                            </div>
+                            <p class="verdict-desc" id="verdict-desc">No significant defects detected based on software metrics.</p>
+                            
+                            <div class="metrics-grid" id="metrics-grid">
+                                <!-- Metrics injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 BugPredictor AI. Powered by Machine Learning.</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
