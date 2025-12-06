@@ -64,28 +64,71 @@ def render_cpp_interface():
     tab1, tab2 = st.tabs(["📂 Uploader un CSV", "📝 Coller du Code"])
 
     with tab1:
-        uploaded = st.file_uploader("CSV avec les 21 métriques", type="csv", key="cpp_upload")
+        st.subheader("Import de fichiers")
+        uploaded = st.file_uploader("Fichier CSV ou Code Source (C/C++)", type=["csv", "c", "cpp", "h", "cc"], key="cpp_upload")
+        
         if uploaded:
-            df = pd.read_csv(uploaded)
-            # Vérification des colonnes
-            missing_cols = [c for c in features if c not in df.columns]
-            if missing_cols:
-                st.error(f"Colonnes manquantes : {missing_cols}")
+            # === CAS 1 : ANALYSE DE PROJET (CSV) ===
+            if uploaded.name.endswith(".csv"):
+                df = pd.read_csv(uploaded)
+                # Vérification des colonnes
+                missing_cols = [c for c in features if c not in df.columns]
+                if missing_cols:
+                    st.error(f"Colonnes manquantes : {missing_cols}")
+                else:
+                    X = df[features].copy()
+                    X_scaled = scaler.transform(X)
+                    proba = model.predict_proba(X_scaled)[:, 1]
+                    pred = proba >= 0.5
+
+                    df["Probabilité_bug_%"] = (proba * 100).round(2)
+                    df["Prédiction"] = ["Bug" if p else "Propre" for p in pred]
+                    df["Risque"] = df["Probabilité_bug_%"].apply(
+                        lambda x: "Élevé" if x >= 70 else ("Moyen" if x >= 40 else "Faible")
+                    )
+                    df = df.sort_values("Probabilité_bug_%", ascending=False).reset_index(drop=True)
+
+                    st.success(f"{len(df)} fichiers analysés – {int(pred.sum())} à risque")
+                    st.dataframe(df.head(10)[["Probabilité_bug_%", "Prédiction", "Risque", "loc", "v(g)"]], use_container_width=True)
+            
+            # === CAS 2 : ANALYSE FICHIER SOURCE UNIQUE ===
             else:
-                X = df[features].copy()
-                X_scaled = scaler.transform(X)
-                proba = model.predict_proba(X_scaled)[:, 1]
-                pred = proba >= 0.5
+                code_content = uploaded.getvalue().decode("utf-8")
+                st.info(f"Analyse du fichier : {uploaded.name}")
+                
+                with st.spinner("Extraction des métriques..."):
+                    lines = len(code_content.splitlines())
+                    complexity = len(re.findall(r'\b(if|for|while|switch|case)\b', code_content, re.I)) + 1
+                    branches = len(re.findall(r'\b(if|else|for|while|switch)\b', code_content, re.I))
 
-                df["Probabilité_bug_%"] = (proba * 100).round(2)
-                df["Prédiction"] = ["Bug" if p else "Propre" for p in pred]
-                df["Risque"] = df["Probabilité_bug_%"].apply(
-                    lambda x: "Élevé" if x >= 70 else ("Moyen" if x >= 40 else "Faible")
-                )
-                df = df.sort_values("Probabilité_bug_%", ascending=False).reset_index(drop=True)
+                    data = {f: 0.0 for f in features}
+                    data["loc"] = lines
+                    data["v(g)"] = complexity
+                    data["branchCount"] = branches
+                    
+                    # Heuristiques simples
+                    data['n'] = len(re.findall(r'\w+', code_content)) 
+                    data['v'] = data['n'] * 5 
+                    data['d'] = complexity * 2 
+                    data['e'] = data['v'] * data['d'] 
+                    data['b'] = data['v'] / 3000 
+                    
+                    X = pd.DataFrame([data])[features]
+                    X_scaled = scaler.transform(X)
+                    proba = model.predict_proba(X_scaled)[0, 1]
 
-                st.success(f"{len(df)} fichiers analysés – {int(pred.sum())} à risque")
-                st.dataframe(df.head(10)[["Probabilité_bug_%", "Prédiction", "Risque", "loc", "v(g)"]], use_container_width=True)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Probabilité de Bug", f"{proba*100:.1f}%")
+                    with col2:
+                        st.metric("Complexité", complexity)
+
+                    if proba >= 0.7:
+                        st.error("🚨 RISQUE ÉLEVÉ")
+                    elif proba >= 0.4:
+                        st.warning("⚠️ Risque Moyen")
+                    else:
+                        st.success("✅ Code Propre")
 
     with tab2:
         code = st.text_area("Code Source C/C++", height=300, placeholder="#include <stdio.h>\nint main() { ... }", key="cpp_code")
@@ -174,58 +217,130 @@ def extract_ck_metrics(java_code, features):
     return df[features]
 
 def render_java_interface():
-    st.header("☕ Analyse Java")
+    st.header("Analyse Code Java ☕")
     model, scaler, features = load_java_model()
     
     if not model:
         return
 
-    java_code = st.text_area(
-        "Code Source Java",
-        height=300,
-        placeholder="public class Point { ... }",
-        key="java_code"
-    )
-    
-    if st.button("Analyser Code Java", type="primary"):
-        if not java_code.strip():
-            st.warning("Veuillez coller du code.")
-        else:
-            with st.spinner("Analyse CK Metrics..."):
-                df_metrics = extract_ck_metrics(java_code, features)
-                
-                if df_metrics is None:
-                    st.error("Erreur de parsing Java. Vérifiez la syntaxe.")
-                else:
-                    # Heuristique "Classe Parfaite"
-                    metrics = df_metrics.iloc[0]
-                    wmc = metrics['wmc']
-                    cbo = metrics['cbo']
-                    rfc = metrics['rfc']
-                    max_cc = metrics['max_cc']
-                    loc = metrics['loc']
+    tab1, tab2 = st.tabs(["📂 Uploader un CSV", "📝 Coller du Code"])
 
-                    if (wmc <= 10 and cbo == 0 and rfc <= wmc + 3 and max_cc <= 2 and loc <= 80):
-                        st.balloons()
-                        st.success("🌟 CLASSE PARFAITE (0.0000% Risque)")
-                        st.info("Respecte les meilleures pratiques : faible couplage, faible complexité.")
+    with tab1:
+        st.subheader("Import de fichiers")
+        uploaded = st.file_uploader("Fichier CSV ou Code Source (Java)", type=["csv", "java"], key="java_upload")
+        
+        if uploaded:
+            # === CAS 1 : ANALYSE DE PROJET (CSV) ===
+            if uploaded.name.endswith(".csv"):
+                df = pd.read_csv(uploaded)
+                # Vérification des colonnes
+                missing_cols = [c for c in features if c not in df.columns]
+                if missing_cols:
+                    st.error(f"Colonnes manquantes : {missing_cols}")
+                else:
+                    X = df[features].copy()
+                    X_scaled = scaler.transform(X)
+                    proba = model.predict_proba(X_scaled)[:, 1]
+                    pred = proba >= 0.5
+
+                    df["Probabilité_bug_%"] = (proba * 100).round(2)
+                    df["Prédiction"] = ["Bug" if p else "Propre" for p in pred]
+                    df["Risque"] = df["Probabilité_bug_%"].apply(
+                        lambda x: "Élevé" if x >= 70 else ("Moyen" if x >= 40 else "Faible")
+                    )
+                    df = df.sort_values("Probabilité_bug_%", ascending=False).reset_index(drop=True)
+
+                    st.success(f"{len(df)} classes analysées – {int(pred.sum())} à risque")
+                    st.dataframe(df.head(10)[["Probabilité_bug_%", "Prédiction", "Risque", "wmc", "loc"]], use_container_width=True)
+
+            # === CAS 2 : ANALYSE FICHIER SOURCE UNIQUE ===
+            else:
+                java_code_content = uploaded.getvalue().decode("utf-8")
+                st.info(f"Analyse du fichier : {uploaded.name}")
+                
+                with st.spinner("Analyse CK Metrics..."):
+                    df_metrics = extract_ck_metrics(java_code_content, features)
+                    
+                    if df_metrics is None:
+                        st.error("Erreur de parsing Java. Vérifiez la syntaxe.")
                     else:
-                        X = scaler.transform(df_metrics)
-                        prob = float(model.predict_proba(X)[0, 1])
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Probabilité de Bug", f"{prob*100:.2f}%")
-                        with col2:
-                            st.metric("WMC (Complexité)", int(wmc))
-                        
-                        if prob > 0.5:
-                            st.error("⚠️ Potentiel Bug Détecté")
+                        # Heuristique "Classe Parfaite"
+                        metrics = df_metrics.iloc[0]
+                        wmc = metrics['wmc']
+                        cbo = metrics['cbo']
+                        rfc = metrics['rfc']
+                        max_cc = metrics['max_cc']
+                        loc = metrics['loc']
+
+                        if (wmc <= 10 and cbo == 0 and rfc <= wmc + 3 and max_cc <= 2 and loc <= 80):
+                            st.balloons()
+                            st.success("🌟 CLASSE PARFAITE (0.0000% Risque)")
+                            st.info("Respecte les meilleures pratiques : faible couplage, faible complexité.")
                         else:
-                            st.success("✅ Code Sain")
+                            X = scaler.transform(df_metrics)
+                            prob = float(model.predict_proba(X)[0, 1])
                             
-                    with st.expander("Voir les métriques détaillées"):
-                        st.json(df_metrics.to_dict(orient='records')[0])
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Probabilité de Bug", f"{prob*100:.2f}%")
+                            with col2:
+                                st.metric("WMC (Complexité)", int(wmc))
+                            
+                            if prob > 0.5:
+                                st.error("⚠️ Potentiel Bug Détecté")
+                            else:
+                                st.success("✅ Code Sain")
+                                
+                        with st.expander("Voir les métriques détaillées"):
+                            st.json(df_metrics.to_dict(orient='records')[0])
+
+    with tab2:
+        java_code = st.text_area(
+            "Code Source Java",
+            height=300,
+            placeholder="public class Point { ... }",
+            key="java_code"
+        )
+        
+        if st.button("Analyser Code Java", type="primary"):
+            if not java_code.strip():
+                st.warning("Veuillez coller du code.")
+            else:
+                with st.spinner("Analyse CK Metrics..."):
+                    df_metrics = extract_ck_metrics(java_code, features)
+                    
+                    if df_metrics is None:
+                        st.error("Erreur de parsing Java. Vérifiez la syntaxe.")
+                    else:
+                        # Heuristique "Classe Parfaite"
+                        metrics = df_metrics.iloc[0]
+                        wmc = metrics['wmc']
+                        cbo = metrics['cbo']
+                        rfc = metrics['rfc']
+                        max_cc = metrics['max_cc']
+                        loc = metrics['loc']
+
+                        if (wmc <= 10 and cbo == 0 and rfc <= wmc + 3 and max_cc <= 2 and loc <= 80):
+                            st.balloons()
+                            st.success("🌟 CLASSE PARFAITE (0.0000% Risque)")
+                            st.info("Respecte les meilleures pratiques : faible couplage, faible complexité.")
+                        else:
+                            X = scaler.transform(df_metrics)
+                            prob = float(model.predict_proba(X)[0, 1])
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Probabilité de Bug", f"{prob*100:.2f}%")
+                            with col2:
+                                st.metric("WMC (Complexité)", int(wmc))
+                            
+                            if prob > 0.5:
+                                st.error("⚠️ Potentiel Bug Détecté")
+                            else:
+                                st.success("✅ Code Sain")
+                                
+                        with st.expander("Voir les métriques détaillées"):
+                            st.json(df_metrics.to_dict(orient='records')[0])
 
 # ====================== MAIN LAYOUT ======================
 st.sidebar.title("🔍 Bug Predictor")
