@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.ipynb_checkpoints/
+
+# Data analysis / Notebooks (Excluded as per request to keep only app files)
+*.ipynb
+
+# Debug / Dump files
+dump_features.py
+features_dump.txt
+inspect_features.py
+inspect_features_v2.py
+
+# Env
+.env
+.venv
+env/
+venv/
