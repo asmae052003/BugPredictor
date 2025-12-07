@@ -81,32 +81,71 @@ def render_cpp_interface():
         st.error("Modèle C++ introuvable (best_bug_predictor_model.pkl)")
         return
 
-    tab1, tab2 = st.tabs(["Uploader un CSV", "Coller du code C/C++"])
+    tab1, tab2 = st.tabs(["📂 Uploader un Fichier", "Coller du code C/C++"])
 
-    # === TAB 1 : CSV ===
+    # === TAB 1 : IMPORT ===
     with tab1:
-        st.header("Analyse d’un projet complet")
-        uploaded = st.file_uploader("CSV avec les 21 métriques", type=["csv"], key="cpp_csv")
+        st.header("Analyse de fichier")
+        uploaded = st.file_uploader("Fichier CSV ou Code Source (C/C++)", type=["csv", "c", "cpp", "h"], key="cpp_upload")
+        
         if uploaded:
-            df = pd.read_csv(uploaded)
-            if set(features).issubset(df.columns):
-                X = scaler.transform(df[features])
-                proba = model.predict_proba(X)[:, 1]
-                pred = (proba >= 0.5)
+            # === CAS 1 : CSV ===
+            if uploaded.name.endswith(".csv"):
+                df = pd.read_csv(uploaded)
+                if set(features).issubset(df.columns):
+                    X = scaler.transform(df[features])
+                    proba = model.predict_proba(X)[:, 1]
+                    pred = (proba >= 0.5)
 
-                df["Probabilité_bug_%"] = (proba * 100).round(2)
-                df["Prédiction"] = ["Bug" if p else "Propre" for p in pred]
-                df["Risque"] = df["Probabilité_bug_%"].apply(
-                    lambda x: "Élevé" if x >= 70 else ("Moyen" if x >= 40 else "Faible")
-                )
-                df = df.sort_values("Probabilité_bug_%", ascending=False).reset_index(drop=True)
+                    df["Probabilité_bug_%"] = (proba * 100).round(2)
+                    df["Prédiction"] = ["Bug" if p else "Propre" for p in pred]
+                    df["Risque"] = df["Probabilité_bug_%"].apply(
+                        lambda x: "Élevé" if x >= 70 else ("Moyen" if x >= 40 else "Faible")
+                    )
+                    df = df.sort_values("Probabilité_bug_%", ascending=False).reset_index(drop=True)
 
-                st.success(f"{len(df)} fichiers analysés – {pred.sum()} à risque élevé")
-                st.subheader("Top 10 les plus risqués")
-                st.dataframe(df.head(10)[["Probabilité_bug_%", "Prédiction", "Risque", "loc", "v(g)"]], use_container_width=True)
-                st.download_button("Télécharger le résultat", df.to_csv(index=False).encode(), "resultat_bugs.csv", "text/csv")
+                    st.success(f"{len(df)} fichiers analysés – {pred.sum()} à risque élevé")
+                    st.subheader("Top 10 les plus risqués")
+                    st.dataframe(df.head(10)[["Probabilité_bug_%", "Prédiction", "Risque", "loc", "v(g)"]], use_container_width=True)
+                    st.download_button("Télécharger le résultat", df.to_csv(index=False).encode(), "resultat_bugs.csv", "text/csv")
+                else:
+                    st.error("Colonnes manquantes dans le CSV")
+            
+            # === CAS 2 : FICHIER C/C++ ===
             else:
-                st.error("Colonnes manquantes dans le CSV")
+                st.info(f"Analyse du fichier source : {uploaded.name}")
+                code_content = uploaded.getvalue().decode("utf-8")
+                
+                with st.spinner("Analyse en cours..."):
+                    # Use extracted metric logic
+                    lines, complexity = analyze_cpp_code(code_content, features)
+                    
+                    # Logique de risque simplifiée pour C++
+                    prob = 0.0
+                    if complexity == 1 and lines <= 10:
+                        prob = 0.0
+                        st.success("**PARFAITEMENT PROPRE**")
+                        st.balloons()
+                    elif complexity <= 3 and lines <= 20:
+                        prob = 0.15
+                        st.success("**Faible risque**")
+                    elif complexity <= 6:
+                        prob = 0.45
+                        st.warning("**Risque moyen**")
+                    elif complexity <= 10:
+                        prob = 0.78
+                        st.error("**Risque élevé**")
+                    elif complexity <= 15:
+                        prob = 0.92
+                        st.error("**RISQUE TRÈS ÉLEVÉ**")
+                    else:
+                        prob = 0.99
+                        st.error("**RISQUE CRITIQUE**")
+                        st.warning("Complexité cyclomatique ≥ 15 → Code non maintenable")
+
+                    st.progress(prob)
+                    st.markdown(f"**Probabilité de défaut estimée : {prob*100:.2f}%**")
+                    st.info(f"LOC: {lines} | Complexité cyclomatique: {complexity}")
 
     # === TAB 2 : CODE DIRECT ===
     with tab2:
